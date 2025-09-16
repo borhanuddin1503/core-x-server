@@ -112,11 +112,35 @@ async function run() {
         app.post("/trainers", userVerification, async (req, res) => {
             const firebaseEmail = req.firebaseEmail;
             const trainer = req.body;
-            if(firebaseEmail!==trainer.email){
-                return res.status(403).send({message:'Forbidden Access'})
+            const trainerEmail = trainer.email;
+            if (firebaseEmail !== trainerEmail) {
+                return res.status(403).send({ message: 'Forbidden Access' })
             }
+            const query = { email: trainerEmail }
+            const existsUser = await trainersCollection.findOne(query);
+            if (existsUser) {
+                return res.send({
+                    success: false,
+                    message: "Trainer already exists"
+                });
+            }
+
             const result = await trainersCollection.insertOne(trainer);
-            res.json(result);
+            res.send({
+                success: true,
+                message: "Applayed Successfully"
+            });
+        });
+
+
+        // get trainers
+        app.get("/trainers", async (req, res) => {
+            try {
+                const trainers = await trainersCollection.find().toArray();
+                res.send(trainers);
+            } catch (err) {
+                res.status(500).json({ message: err.message });
+            }
         });
 
         await client.db("admin").command({ ping: 1 });
