@@ -3,7 +3,7 @@ require('dotenv').config()
 const app = express()
 const cors = require('cors');
 const port = 3000
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 // middlewares
 app.use(cors());
@@ -135,7 +135,12 @@ async function run() {
 
         // get trainers
         app.get("/trainers", async (req, res) => {
+            const trainerId = req.query.trainerId || '';
             try {
+                if(trainerId){
+                    const trainers = await trainersCollection.findOne({_id: new ObjectId(trainerId)});
+                    return res.send(trainers)
+                }
                 const trainers = await trainersCollection.find().toArray();
                 res.send(trainers);
             } catch (err) {
