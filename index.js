@@ -9,6 +9,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(cors());
 app.use(express.json());
 
+const stripe = require("stripe")(process.env.STRIPE_SEC_KEY);
 
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASS}@cluster0.pn4qknt.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -29,7 +30,9 @@ async function run() {
         const db = client.db('corex-gym');
         const usersCollection = db.collection('users');
         const classesCollection = db.collection('classes');
-        const trainersCollection = db.collection('trainers')
+        const trainersCollection = db.collection('trainers');
+        const paymentCollection = db.collection('payments');
+        const newsLetterCollection = db.collection('newsLetter');
 
         // admin setup
         var admin = require("firebase-admin");
@@ -52,6 +55,37 @@ async function run() {
 
             req.firebaseEmail = email
             next()
+        }
+
+
+        // admin verification
+        const adminVerification = async (req, res, next) => {
+            try {
+                const firebaseEmail = req?.firebaseEmail;
+                const query = { email: firebaseEmail };
+                const user = await usersCollection.findOne(query);
+                if (user.role !== 'admin') {
+                    return res.status(403).send({ message: 'Forbidden Access' })
+                }
+                next()
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        }
+
+        // trainer verification
+        const trainerVerificaiton = async (req, res, next) => {
+            try {
+                const firebaseEmail = req?.firebaseEmail;
+                const query = { email: firebaseEmail };
+                const user = await usersCollection.findOne(query);
+                if (user?.role !== 'trainer') {
+                    return res.status(403).send({ message: 'Forbidden Access' })
+                }
+                next()
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
         }
 
 
@@ -86,6 +120,43 @@ async function run() {
         });
 
 
+        // get user role by email
+        app.get("/users/:email/role", userVerification, async (req, res) => {
+            try {
+                const email = req.params.email;
+
+                if (req.firebaseEmail !== email) {
+                    return res.status(403).send({ message: "Forbidden Access" });
+                }
+
+                const user = await usersCollection.findOne({ email });
+                if (!user) return res.status(404).send({ message: "User not found" });
+
+                res.send({ role: user.role || "member" });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+
+
+        // get user 
+        app.get("/users", userVerification, async (req, res) => {
+            const firebaseEmail = req.firebaseEmail;
+            const { userEmail } = req.query;
+
+            try {
+                if (firebaseEmail !== userEmail) {
+                    return res.status(403).send({ message: 'Forbidden Access' })
+                }
+                const result = await usersCollection.findOne({ email: userEmail });
+                res.send(result);
+            }
+            catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
 
 
         // get classes
@@ -136,9 +207,10 @@ async function run() {
         // get trainers
         app.get("/trainers", async (req, res) => {
             const trainerId = req.query.trainerId || '';
+            console.log(trainerId)
             try {
-                if(trainerId){
-                    const trainers = await trainersCollection.findOne({_id: new ObjectId(trainerId)});
+                if (trainerId) {
+                    const trainers = await trainersCollection.findOne({ _id: new ObjectId(trainerId) });
                     return res.send(trainers)
                 }
                 const trainers = await trainersCollection.find().toArray();
@@ -147,6 +219,52 @@ async function run() {
                 res.status(500).json({ message: err.message });
             }
         });
+
+
+
+
+
+        // payment creat instency
+        app.post("/create-payment-intent", async (req, res) => {
+            const { price } = req.body;
+            console.log(price)
+            // Create a PaymentIntent with the order amount and currency
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: price * 100,
+                currency: "usd",
+                automatic_payment_methods: {
+                    enabled: true,
+                },
+            });
+
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+
+
+        // save payement info
+        app.post('/payments', async (req, res) => {
+            try {
+                const result = await paymentCollection.insertOne(req.body);
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
+
+
+        // get newsletter subscribers
+        app.get('/newsLetterSubscribers', userVerification , adminVerification , async(req , res) => {
+            try {
+                const result = await newsLetterCollection.find().toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({message: error.message})
+            }
+        })
+
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
