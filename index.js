@@ -140,6 +140,22 @@ async function run() {
         });
 
 
+        // change user role
+        app.patch("/users/:email", userVerification, adminVerification, async (req, res) => {
+            try {
+                const email = req.params.email;
+                const { role } = req.body;
+                const query = { email };
+                const updateDoc = { $set: { role } };
+                const result = await usersCollection.updateOne(query, updateDoc);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+
+
 
         // get user 
         app.get("/users", userVerification, async (req, res) => {
@@ -210,10 +226,10 @@ async function run() {
             console.log(trainerId)
             try {
                 if (trainerId) {
-                    const trainers = await trainersCollection.findOne({ _id: new ObjectId(trainerId) });
+                    const trainers = await trainersCollection.findOne({ _id: new ObjectId(trainerId)  , status: 'trainer'});
                     return res.send(trainers)
                 }
-                const trainers = await trainersCollection.find().toArray();
+                const trainers = await trainersCollection.find({status: 'trainer'}).toArray();
                 res.send(trainers);
             } catch (err) {
                 res.status(500).json({ message: err.message });
@@ -221,6 +237,63 @@ async function run() {
         });
 
 
+        // delete trainers
+        app.delete('/trainers', userVerification, adminVerification, async (req, res) => {
+            try {
+                const trainerId = req.query.trainerId;
+                if (trainerId) {
+                    const query = { _id: new ObjectId(trainerId) };
+                    const result = await trainersCollection.deleteOne(query);
+                    res.send(result)
+                }
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
+
+        // get all pending trainers
+        app.get("/trainers/pending", userVerification,  adminVerification, async (req, res) => {
+            const trainerId = req.query.trainerId || '';
+            console.log(trainerId)
+            try {
+                if(trainerId){
+                    const trainerInfo = await trainersCollection.findOne({ _id: new ObjectId(trainerId) , status: "pending" });
+                    return res.send(trainerInfo)
+                }
+                const result = await trainersCollection.find({ status: "pending" }).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+        // confirm trainer
+        app.patch("/trainers/:id/confirm", userVerification , adminVerification, async (req, res) => {
+            try {
+                const id = req.params.id;
+                const query = { _id: new ObjectId(id) };
+                const updateDoc = { $set: { status: "trainer" } };
+                const result = await trainersCollection.updateOne(query, updateDoc);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+        // reject trainer (with feedback optional)
+        app.patch("/trainers/:id/reject", userVerification,  adminVerification, async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { feedback } = req.body;
+                const query = { _id: new ObjectId(id) };
+                const updateDoc = { $set: { status: "rejected", feedback } };
+                const result = await trainersCollection.updateOne(query, updateDoc);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
 
 
 
@@ -256,12 +329,12 @@ async function run() {
 
 
         // get newsletter subscribers
-        app.get('/newsLetterSubscribers', userVerification , adminVerification , async(req , res) => {
+        app.get('/newsLetterSubscribers', userVerification, adminVerification, async (req, res) => {
             try {
                 const result = await newsLetterCollection.find().toArray();
                 res.send(result);
             } catch (error) {
-                res.status(500).send({message: error.message})
+                res.status(500).send({ message: error.message })
             }
         })
 
