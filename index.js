@@ -226,10 +226,10 @@ async function run() {
             console.log(trainerId)
             try {
                 if (trainerId) {
-                    const trainers = await trainersCollection.findOne({ _id: new ObjectId(trainerId)  , status: 'trainer'});
+                    const trainers = await trainersCollection.findOne({ _id: new ObjectId(trainerId), status: 'trainer' });
                     return res.send(trainers)
                 }
-                const trainers = await trainersCollection.find({status: 'trainer'}).toArray();
+                const trainers = await trainersCollection.find({ status: 'trainer' }).toArray();
                 res.send(trainers);
             } catch (err) {
                 res.status(500).json({ message: err.message });
@@ -253,12 +253,12 @@ async function run() {
 
 
         // get all pending trainers
-        app.get("/trainers/pending", userVerification,  adminVerification, async (req, res) => {
+        app.get("/trainers/pending", userVerification, adminVerification, async (req, res) => {
             const trainerId = req.query.trainerId || '';
             console.log(trainerId)
             try {
-                if(trainerId){
-                    const trainerInfo = await trainersCollection.findOne({ _id: new ObjectId(trainerId) , status: "pending" });
+                if (trainerId) {
+                    const trainerInfo = await trainersCollection.findOne({ _id: new ObjectId(trainerId), status: "pending" });
                     return res.send(trainerInfo)
                 }
                 const result = await trainersCollection.find({ status: "pending" }).toArray();
@@ -269,7 +269,7 @@ async function run() {
         });
 
         // confirm trainer
-        app.patch("/trainers/:id/confirm", userVerification , adminVerification, async (req, res) => {
+        app.patch("/trainers/:id/confirm", userVerification, adminVerification, async (req, res) => {
             try {
                 const id = req.params.id;
                 const query = { _id: new ObjectId(id) };
@@ -282,7 +282,7 @@ async function run() {
         });
 
         // reject trainer (with feedback optional)
-        app.patch("/trainers/:id/reject", userVerification,  adminVerification, async (req, res) => {
+        app.patch("/trainers/:id/reject", userVerification, adminVerification, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { feedback } = req.body;
@@ -335,6 +335,69 @@ async function run() {
                 res.send(result);
             } catch (error) {
                 res.status(500).send({ message: error.message })
+            }
+        })
+
+
+
+
+        // Total sum of all booking payments
+        app.get("/admin/total-balance", async (req, res) => {
+            try {
+                const result = await paymentCollection.aggregate([
+                    {
+                        $match: { "paymentIntent.status": "succeeded" }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            totalBalance: { $sum: "$price" }
+                        }
+                    }
+                ]).toArray();
+
+                res.send(result[0] || { totalBalance: 0 });
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+
+
+        // Get last 6 transactions
+        app.get("/admin/last-transactions", async (req, res) => {
+            try {
+                const result = await paymentCollection
+                    .find()
+                    .limit(6)
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+
+
+        // get newsletter members count
+        app.get('/newsLetterSubscribers/member' , async(req , res) => {
+            try {
+                const count = await newsLetterCollection.countDocuments();
+                res.send({count})
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        })
+        
+        
+        // get paid members count
+        app.get("/admin/transactions/member" , async(req , res) => {
+            try {
+                const count = await paymentCollection.countDocuments();
+                res.send({count})
+            } catch (error) {
+                res.status(500).send({ message: error.message });
             }
         })
 
