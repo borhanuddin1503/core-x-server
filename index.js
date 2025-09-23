@@ -214,12 +214,12 @@ async function run() {
 
 
         // get classes for trainer
-        app.get('/classes/withoutTrainers' , async(req, res) => {
+        app.get('/classes/withoutTrainers', async (req, res) => {
             try {
                 const result = await classesCollection.find().toArray();
                 res.send(result)
             } catch (error) {
-                res.status(500).send({message: error.message})
+                res.status(500).send({ message: error.message })
             }
         })
 
@@ -278,6 +278,18 @@ async function run() {
             }
         });
 
+
+        // get trainers by email
+        app.get('/trainers/:email', async (req, res) => {
+            try {
+                const email = req.params.email;
+                const query = { email };
+                const result = await trainersCollection.findOne(query);
+                res.send(result);
+            } catch (error) {
+                res.status(500).json({ message: err.message });
+            }
+        })
 
         // delete trainers
         app.delete('/trainers', userVerification, adminVerification, async (req, res) => {
@@ -369,6 +381,33 @@ async function run() {
         })
 
 
+        // Add booking to a slot
+        app.patch("/trainers/:email/slots/book", async (req, res) => {
+            const { email } = req.params;
+            const { className, userName, userEmail , packageName } = req.body;
+
+            const result = await trainersCollection.updateOne(
+                { email, "slots.className": className },
+                {
+                    $push: {
+                        "slots.$.bookings": {
+                            userName,
+                            userEmail,
+                            bookedAt: new Date(),
+                            packageName,
+                        }
+                    }
+                }
+            );
+
+            if (result.modifiedCount === 0) {
+                return res.status(404).json({ success: false, message: "Slot not found" });
+            }
+
+            res.json({ success: true, message: "Booking added!" });
+        });
+
+
 
         // get newsletter subscribers
         app.get('/newsLetterSubscribers', userVerification, adminVerification, async (req, res) => {
@@ -412,7 +451,7 @@ async function run() {
                 const result = await paymentCollection
                     .find()
                     .limit(6)
-                    .sort({paidAt: -1})
+                    .sort({ paidAt: -1 })
                     .toArray()
                 res.send(result);
             } catch (error) {
@@ -442,6 +481,53 @@ async function run() {
                 res.status(500).send({ message: error.message });
             }
         })
+
+
+
+        // remove slot by className
+        app.patch("/trainers/:email/slots/remove", async (req, res) => {
+            try {
+                const { email } = req.params;
+                const { className } = req.body;
+
+                const trainer = await trainersCollection.findOneAndUpdate(
+                    { email },
+                    { $pull: { slots: { className } } }, // remove slot matching className
+                    { new: true }
+                );
+
+                if (!trainer) {
+                    return res.status(404).json({ success: false, message: "Trainer not found" });
+                }
+
+                res.json({ success: true, trainer, message: "Slot deleted successfully" });
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
+
+        // Add slot by trainer email
+        app.patch("/trainers/:email/slots/add", async (req, res) => {
+            try {
+                const { email } = req.params;
+                const slot = req.body;
+
+                const trainer = await trainersCollection.updateOne(
+                    { email },
+                    { $push: { slots: slot } },
+                );
+
+                if (!trainer) {
+                    return res.status(404).json({ success: false, message: "Trainer not found" });
+                }
+
+                res.json({ success: true, trainer, message: "Slot Addeded successfully" });
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
+
 
 
         await client.db("admin").command({ ping: 1 });
