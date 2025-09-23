@@ -178,20 +178,62 @@ async function run() {
         // get classes
         app.get("/classes", async (req, res) => {
             try {
-                const page = parseInt(req.query.page) || 1;
-                const skip = (page - 1) * 6;
+                const result = await classesCollection.aggregate([
+                    {
+                        $lookup: {
+                            from: "trainers",
+                            let: { className: "$name" },
+                            pipeline: [
+                                {
+                                    $match: {
+                                        $expr: { $in: ["$$className", "$slots.className"] }
+                                    }
+                                },
 
-                const total = await classesCollection.estimatedDocumentCount();
-                const classes = await classesCollection.find().skip(skip).limit(6).toArray();
-
-                res.send({
-                    totalPages: Math.ceil(total / 6),
-                    classes
-                });
+                                // keep only slots that match this class
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        profileImage: 1,
+                                        email: 1,
+                                        slots: 1
+                                    }
+                                }
+                            ],
+                            as: "trainers"
+                        }
+                    }
+                ]).toArray();
+                console.log(result)
+                res.send(result || {});
             } catch (error) {
                 res.status(500).json({ message: "Server error", error });
             }
         });
+
+
+
+        // get classes for trainer
+        app.get('/classes/withoutTrainers' , async(req, res) => {
+            try {
+                const result = await classesCollection.find().toArray();
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({message: error.message})
+            }
+        })
+
+        // post class
+        app.post("/classes", userVerification, adminVerification, async (req, res) => {
+            try {
+                const classInfo = req.body;
+                console.log(classInfo)
+                const result = await classesCollection.insertOne(classInfo);
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
 
 
 
@@ -370,8 +412,8 @@ async function run() {
                 const result = await paymentCollection
                     .find()
                     .limit(6)
-                    .toArray();
-
+                    .sort({paidAt: -1})
+                    .toArray()
                 res.send(result);
             } catch (error) {
                 res.status(500).send({ message: error.message });
@@ -381,21 +423,21 @@ async function run() {
 
 
         // get newsletter members count
-        app.get('/newsLetterSubscribers/member' , async(req , res) => {
+        app.get('/newsLetterSubscribers/member', async (req, res) => {
             try {
                 const count = await newsLetterCollection.countDocuments();
-                res.send({count})
+                res.send({ count })
             } catch (error) {
                 res.status(500).send({ message: error.message });
             }
         })
-        
-        
+
+
         // get paid members count
-        app.get("/admin/transactions/member" , async(req , res) => {
+        app.get("/admin/transactions/member", async (req, res) => {
             try {
                 const count = await paymentCollection.countDocuments();
-                res.send({count})
+                res.send({ count })
             } catch (error) {
                 res.status(500).send({ message: error.message });
             }
