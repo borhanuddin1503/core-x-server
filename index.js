@@ -33,6 +33,7 @@ async function run() {
         const trainersCollection = db.collection('trainers');
         const paymentCollection = db.collection('payments');
         const newsLetterCollection = db.collection('newsLetter');
+        const reviewsCollection = db.collection('reviews')
 
         // admin setup
         var admin = require("firebase-admin");
@@ -175,6 +176,25 @@ async function run() {
         })
 
 
+
+        // update user information
+        app.patch('/users/updateProfile/:email', userVerification, async (req, res) => {
+            try {
+                const email = req.params.email;
+                const firebaseEmail = req.firebaseEmail;
+                if (email !== firebaseEmail) {
+                    return res.status(403).send({ message: 'Forbidden Access' })
+                }
+                const query = { email };
+                const { displayName, photoURL } = req.body;
+                const updateDoc = { $set: { displayName, photoURL } };
+                const result = await usersCollection.updateOne(query, updateDoc);
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
         // get classes
         app.get("/classes", async (req, res) => {
             try {
@@ -186,7 +206,8 @@ async function run() {
                             pipeline: [
                                 {
                                     $match: {
-                                        $expr: { $in: ["$$className", "$slots.className"] }
+                                        $expr: { $in: ["$$className", "$slots.className"] },
+                                        status: "trainer"
                                     }
                                 },
 
@@ -265,7 +286,7 @@ async function run() {
         // get trainers
         app.get("/trainers", async (req, res) => {
             const trainerId = req.query.trainerId || '';
-            console.log(trainerId)
+            console.log('hit trainers')
             try {
                 if (trainerId) {
                     const trainers = await trainersCollection.findOne({ _id: new ObjectId(trainerId), status: 'trainer' });
@@ -277,6 +298,22 @@ async function run() {
                 res.status(500).json({ message: err.message });
             }
         });
+
+
+        // get trainers of rejected or pending status.
+        app.get('/trainers/applicants/:email', async (req, res) => {
+            try {
+                const email = req.params.email;
+                const query = {
+                    email,
+                    status: { $in: ["pending", "rejected"] }
+                }
+                const result = await trainersCollection.findOne(query);
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
 
 
         // get trainers by email
@@ -306,21 +343,31 @@ async function run() {
         })
 
 
-        // get all pending trainers
-        app.get("/trainers/pending", userVerification, adminVerification, async (req, res) => {
-            const trainerId = req.query.trainerId || '';
-            console.log(trainerId)
+        // 1️⃣ Get pending trainer by ID
+        app.get("/applied/trainers/pending/:trainerId", async (req, res) => {
+            const { trainerId } = req.params;
             try {
-                if (trainerId) {
-                    const trainerInfo = await trainersCollection.findOne({ _id: new ObjectId(trainerId), status: "pending" });
-                    return res.send(trainerInfo)
+                const trainerInfo = await trainersCollection.findOne({ _id: new ObjectId(trainerId), status: "pending" });
+                if (!trainerInfo) {
+                    return res.status(404).send({ message: "Trainer not found or not pending" });
                 }
+                res.send(trainerInfo);
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+        // 2️⃣ Get all pending trainers
+        app.get("/applied/trainers/pending", async (req, res) => {
+            console.log('hit the panding applicant')
+            try {
                 const result = await trainersCollection.find({ status: "pending" }).toArray();
                 res.send(result);
             } catch (error) {
                 res.status(500).send({ message: error.message });
             }
         });
+
 
         // confirm trainer
         app.patch("/trainers/:id/confirm", userVerification, adminVerification, async (req, res) => {
@@ -384,7 +431,7 @@ async function run() {
         // Add booking to a slot
         app.patch("/trainers/:email/slots/book", async (req, res) => {
             const { email } = req.params;
-            const { className, userName, userEmail , packageName } = req.body;
+            const { className, userName, userEmail, packageName } = req.body;
 
             const result = await trainersCollection.updateOne(
                 { email, "slots.className": className },
@@ -473,7 +520,7 @@ async function run() {
 
 
         // get paid members count
-        app.get("/admin/transactions/member", async (req, res) => {
+        app.get("/admin/transactions/member", userVerification, adminVerification, async (req, res) => {
             try {
                 const count = await paymentCollection.countDocuments();
                 res.send({ count })
@@ -483,9 +530,44 @@ async function run() {
         })
 
 
+        // get payment by userEmail
+        app.get('/payments/booked/:email', userVerification, async (req, res) => {
+            try {
+                const email = req.params.email;
+                const firebaseEmail = req.firebaseEmail;
+
+                if (email !== firebaseEmail) {
+                    return res.status(403).send({ message: 'Forbidden Access' })
+                }
+
+                const query = { 'user.email': email }
+
+                const result = await paymentCollection.find(query).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
+
+
+        // creat review 
+        app.post('/reviews', userVerification, async (req, res) => {
+            try {
+                const reviewInfo= req.body;
+                const result = await reviewsCollection.insertOne(reviewInfo);
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
+
+
+
 
         // remove slot by className
-        app.patch("/trainers/:email/slots/remove", async (req, res) => {
+        app.patch("/trainers/:email/slots/remove", userVerification, trainerVerificaiton, async (req, res) => {
             try {
                 const { email } = req.params;
                 const { className } = req.body;
@@ -508,7 +590,7 @@ async function run() {
 
 
         // Add slot by trainer email
-        app.patch("/trainers/:email/slots/add", async (req, res) => {
+        app.patch("/trainers/:email/slots/add", userVerification, trainerVerificaiton, async (req, res) => {
             try {
                 const { email } = req.params;
                 const slot = req.body;
