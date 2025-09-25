@@ -198,7 +198,17 @@ async function run() {
         // get classes
         app.get("/classes", async (req, res) => {
             try {
-                const result = await classesCollection.aggregate([
+                const search = req.query.search || "";
+                const page = parseInt(req.query.page) || 1;
+                const limit =  6; 
+                const skip = (page - 1) * limit;
+
+                const pipeline = [
+                    {
+                        $match: {
+                            name: { $regex: search, $options: "i" } // case-insensitive search
+                        }
+                    },
                     {
                         $lookup: {
                             from: "trainers",
@@ -210,8 +220,6 @@ async function run() {
                                         status: "trainer"
                                     }
                                 },
-
-                                // keep only slots that match this class
                                 {
                                     $project: {
                                         fullName: 1,
@@ -223,14 +231,30 @@ async function run() {
                             ],
                             as: "trainers"
                         }
-                    }
-                ]).toArray();
-                console.log(result)
-                res.send(result || {});
+                    },
+                    { $skip: skip },
+                    { $limit: limit }
+                ];
+
+                // get paginated data
+                const classes = await classesCollection.aggregate(pipeline).toArray();
+
+                // get total count for pagination
+                const totalClasses = await classesCollection.countDocuments({
+                    name: { $regex: search, $options: "i" }
+                });
+                const totalPages = Math.ceil(totalClasses / limit);
+
+                res.send({
+                    classes,
+                    totalPages,
+                });
             } catch (error) {
+                console.error(error);
                 res.status(500).json({ message: "Server error", error });
             }
         });
+
 
 
 
@@ -554,7 +578,7 @@ async function run() {
         // creat review 
         app.post('/reviews', userVerification, async (req, res) => {
             try {
-                const reviewInfo= req.body;
+                const reviewInfo = req.body;
                 const result = await reviewsCollection.insertOne(reviewInfo);
 
                 res.send(result);
