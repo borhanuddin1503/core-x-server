@@ -200,7 +200,7 @@ async function run() {
             try {
                 const search = req.query.search || "";
                 const page = parseInt(req.query.page) || 1;
-                const limit =  6; 
+                const limit = 6;
                 const skip = (page - 1) * limit;
 
                 const pipeline = [
@@ -212,11 +212,11 @@ async function run() {
                     {
                         $lookup: {
                             from: "trainers",
-                            let: { className: "$name" },
+                            let: { classId: "$_id" },
                             pipeline: [
                                 {
                                     $match: {
-                                        $expr: { $in: ["$$className", "$slots.className"] },
+                                        $expr: { $in: [{ $toString: "$$classId" }, "$slots.classId"] },
                                         status: "trainer"
                                     }
                                 },
@@ -235,16 +235,13 @@ async function run() {
                     { $skip: skip },
                     { $limit: limit }
                 ];
-
                 // get paginated data
                 const classes = await classesCollection.aggregate(pipeline).toArray();
-
                 // get total count for pagination
                 const totalClasses = await classesCollection.countDocuments({
                     name: { $regex: search, $options: "i" }
                 });
                 const totalPages = Math.ceil(totalClasses / limit);
-
                 res.send({
                     classes,
                     totalPages,
@@ -255,6 +252,46 @@ async function run() {
             }
         });
 
+
+
+        // get fetaured class
+        app.get('/feturedClasses', async (req, res) => {
+            try {
+                const pipeLine = [
+                    { $addFields: { totalBookings: { $size: { $ifNull: ["$bookings", []]}}}},
+                    {
+                        $lookup:
+                        {
+                            from: 'trainers',
+                            let: { classId: '$_id' },
+                            pipeline: [
+                                {
+                                    $match: {
+                                        $expr: { $in: [{ $toString: '$$classId' }, '$slots.classId'] }
+                                    }
+                                },
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        profileImage: 1,
+                                        email: 1,
+                                        slots: 1
+                                    }
+                                }
+                            ],
+                            as: "trainers"
+                        }
+                    },
+                    { $sort: { totalBookings: -1 } },
+                    { $limit: 6 },
+                ];
+
+                const classes = await classesCollection.aggregate(pipeLine).toArray();
+                res.send(classes)
+            } catch (error) {
+                res.status(500).json({ message: "Server error", error });
+            }
+        })
 
 
 
@@ -368,7 +405,7 @@ async function run() {
 
 
         // 1️⃣ Get pending trainer by ID
-        app.get("/applied/trainers/pending/:trainerId", async (req, res) => {
+        app.get("/applied/trainers/pending/:trainerId", userVerification , adminVerification, async (req, res) => {
             const { trainerId } = req.params;
             try {
                 const trainerInfo = await trainersCollection.findOne({ _id: new ObjectId(trainerId), status: "pending" });
@@ -382,8 +419,7 @@ async function run() {
         });
 
         // 2️⃣ Get all pending trainers
-        app.get("/applied/trainers/pending", async (req, res) => {
-            console.log('hit the panding applicant')
+        app.get("/applied/trainers/pending",userVerification  , adminVerification, async (req, res) => {
             try {
                 const result = await trainersCollection.find({ status: "pending" }).toArray();
                 res.send(result);
@@ -453,7 +489,7 @@ async function run() {
 
 
         // Add booking to a slot
-        app.patch("/trainers/:email/slots/book", async (req, res) => {
+        app.patch("/trainers/:email/slots/book", userVerification, async (req, res) => {
             const { email } = req.params;
             const { className, userName, userEmail, packageName } = req.body;
 
@@ -479,6 +515,29 @@ async function run() {
         });
 
 
+        // save booked customer in classes
+        app.patch('/classes/bookingCount/:id', userVerification, async (req, res) => {
+            try {
+                const bookingInfo = req.body;
+                const classId = req.params.id;
+                const firebaseEmail = req.firebaseEmail;
+                if (bookingInfo.userEmail !== firebaseEmail) {
+                    return res.status(403).send({ message: 'Forbidden Access' })
+                }
+                const query = { _id: new ObjectId(classId) }
+                const result = await classesCollection.updateOne(query,
+                    {
+                        $addToSet: {
+                            "bookings": bookingInfo
+                        }
+                    }
+                );
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
 
         // get newsletter subscribers
         app.get('/newsLetterSubscribers', userVerification, adminVerification, async (req, res) => {
@@ -494,7 +553,7 @@ async function run() {
 
 
         // Total sum of all booking payments
-        app.get("/admin/total-balance", async (req, res) => {
+        app.get("/admin/total-balance", userVerification , adminVerification, async (req, res) => {
             try {
                 const result = await paymentCollection.aggregate([
                     {
@@ -517,7 +576,7 @@ async function run() {
 
 
         // Get last 6 transactions
-        app.get("/admin/last-transactions", async (req, res) => {
+        app.get("/admin/last-transactions", userVerification ,  adminVerification, async (req, res) => {
             try {
                 const result = await paymentCollection
                     .find()
