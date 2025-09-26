@@ -258,7 +258,7 @@ async function run() {
         app.get('/feturedClasses', async (req, res) => {
             try {
                 const pipeLine = [
-                    { $addFields: { totalBookings: { $size: { $ifNull: ["$bookings", []]}}}},
+                    { $addFields: { totalBookings: { $size: { $ifNull: ["$bookings", []] } } } },
                     {
                         $lookup:
                         {
@@ -405,7 +405,7 @@ async function run() {
 
 
         // 1️⃣ Get pending trainer by ID
-        app.get("/applied/trainers/pending/:trainerId", userVerification , adminVerification, async (req, res) => {
+        app.get("/applied/trainers/pending/:trainerId", userVerification, adminVerification, async (req, res) => {
             const { trainerId } = req.params;
             try {
                 const trainerInfo = await trainersCollection.findOne({ _id: new ObjectId(trainerId), status: "pending" });
@@ -419,7 +419,7 @@ async function run() {
         });
 
         // 2️⃣ Get all pending trainers
-        app.get("/applied/trainers/pending",userVerification  , adminVerification, async (req, res) => {
+        app.get("/applied/trainers/pending", userVerification, adminVerification, async (req, res) => {
             try {
                 const result = await trainersCollection.find({ status: "pending" }).toArray();
                 res.send(result);
@@ -553,7 +553,7 @@ async function run() {
 
 
         // Total sum of all booking payments
-        app.get("/admin/total-balance", userVerification , adminVerification, async (req, res) => {
+        app.get("/admin/total-balance", userVerification, adminVerification, async (req, res) => {
             try {
                 const result = await paymentCollection.aggregate([
                     {
@@ -576,7 +576,7 @@ async function run() {
 
 
         // Get last 6 transactions
-        app.get("/admin/last-transactions", userVerification ,  adminVerification, async (req, res) => {
+        app.get("/admin/last-transactions", userVerification, adminVerification, async (req, res) => {
             try {
                 const result = await paymentCollection
                     .find()
@@ -694,6 +694,15 @@ async function run() {
         });
 
 
+        // get reviews
+        app.get('/reviews', async (req, res) => {
+            try {
+                const result = await reviewsCollection.find().toArray();
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({message: error.message})
+            }
+        })
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
