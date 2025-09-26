@@ -551,6 +551,31 @@ async function run() {
 
 
 
+        // post newsletter subscribers
+        app.post('/newsLetter' , async(req ,res) => {
+            try {
+                const data = req.body;
+                const result = await newsLetterCollection.insertOne(data);
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({message: error.message})
+            }
+        })
+
+
+
+        // get three  trainers for home page
+        app.get('/team/trainers' , async(req , res) => {
+            try {
+                const result = await trainersCollection.find({ status: 'trainer' }).limit(3).toArray();
+                console.log(result)
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({message: error.message})
+            }
+        })
+
+
 
         // Total sum of all booking payments
         app.get("/admin/total-balance", userVerification, adminVerification, async (req, res) => {
