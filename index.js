@@ -33,7 +33,8 @@ async function run() {
         const trainersCollection = db.collection('trainers');
         const paymentCollection = db.collection('payments');
         const newsLetterCollection = db.collection('newsLetter');
-        const reviewsCollection = db.collection('reviews')
+        const reviewsCollection = db.collection('reviews');
+        const postsCollection = db.collection('posts');
 
         // admin setup
         var admin = require("firebase-admin");
@@ -66,6 +67,20 @@ async function run() {
                 const query = { email: firebaseEmail };
                 const user = await usersCollection.findOne(query);
                 if (user.role !== 'admin') {
+                    return res.status(403).send({ message: 'Forbidden Access' })
+                }
+                next()
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        }
+        // admin verification
+        const adminOrTrainerVerification = async (req, res, next) => {
+            try {
+                const firebaseEmail = req?.firebaseEmail;
+                const query = { email: firebaseEmail };
+                const user = await usersCollection.findOne(query);
+                if (user.role !== 'admin' && user.role !== 'trainer') {
                     return res.status(403).send({ message: 'Forbidden Access' })
                 }
                 next()
@@ -552,26 +567,26 @@ async function run() {
 
 
         // post newsletter subscribers
-        app.post('/newsLetter' , async(req ,res) => {
+        app.post('/newsLetter', async (req, res) => {
             try {
                 const data = req.body;
                 const result = await newsLetterCollection.insertOne(data);
                 res.send(result)
             } catch (error) {
-                res.status(500).send({message: error.message})
+                res.status(500).send({ message: error.message })
             }
         })
 
 
 
         // get three  trainers for home page
-        app.get('/team/trainers' , async(req , res) => {
+        app.get('/team/trainers', async (req, res) => {
             try {
                 const result = await trainersCollection.find({ status: 'trainer' }).limit(3).toArray();
                 console.log(result)
                 res.send(result)
             } catch (error) {
-                res.status(500).send({message: error.message})
+                res.status(500).send({ message: error.message })
             }
         })
 
@@ -725,9 +740,97 @@ async function run() {
                 const result = await reviewsCollection.find().toArray();
                 res.send(result)
             } catch (error) {
-                res.status(500).send({message: error.message})
+                res.status(500).send({ message: error.message })
             }
         })
+
+
+        // post forum Posts
+        app.post('/posts', userVerification, adminOrTrainerVerification, async (req, res) => {
+            try {
+                const data = req.body;
+                const result = await postsCollection.insertOne(data);
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
+
+
+        // get posts
+        app.get('/posts', async (req, res) => {
+            try {
+                const page = parseInt(req.query.page);
+                const limit = 6;
+                const result = await postsCollection.find().skip((page - 1) * limit).limit(limit).toArray();
+                const totalData = await postsCollection.countDocuments();
+                const totalPage = Math.ceil(totalData / limit);
+                console.log(totalPage)
+                res.send({
+                    result,
+                    totalPage
+                })
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
+
+
+        // like post api
+        app.patch('/posts/:id/like', userVerification, async (req, res) => {
+            try {
+                const postId = req.params.id;
+                const userEmail = req.query.email;
+
+                const result = await postsCollection.updateOne({ _id: new ObjectId(postId) },
+                    {
+                        $addToSet: { likes: userEmail },
+                        $pull: { unLikes: userEmail }
+                    }
+                )
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
+        // unlike post api
+        app.patch('/posts/:id/unlike', userVerification, async (req, res) => {
+            try {
+                const postId = req.params.id;
+                const userEmail = req.query.email;
+
+                const result = await postsCollection.updateOne({ _id: new ObjectId(postId) },
+                    {
+                        $addToSet: { unLikes: userEmail },
+                        $pull: { likes: userEmail }
+                    }
+                )
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
+
+        // get leatest six posts for home page
+        app.get('/posts/latest', async (req, res) => {
+            try {
+                const limit = 6;
+                const posts = await postsCollection
+                    .find()
+                    .sort({ createdAt: -1 })
+                    .limit(limit)
+                    .toArray();
+
+                res.send({ posts });
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ message: "Server error" });
+            }
+        });
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
