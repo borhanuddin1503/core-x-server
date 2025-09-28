@@ -1,5 +1,5 @@
-const express = require('express')
 require('dotenv').config()
+const express = require('express')
 const app = express()
 const cors = require('cors');
 const port = 3000
@@ -24,7 +24,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        await client.connect();
+        // await client.connect();
 
         // collections
         const db = client.db('corex-gym');
@@ -832,7 +832,7 @@ async function run() {
             }
         });
 
-        await client.db("admin").command({ ping: 1 });
+        // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
