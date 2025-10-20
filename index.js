@@ -190,6 +190,17 @@ async function run() {
             }
         })
 
+        // get all user
+        app.get('/all-user', userVerification, adminVerification, async (req, res) => {
+            try {
+                const result = await usersCollection.find().toArray();
+                res.send(result);
+            }
+            catch (error) {
+                res.status(500).send({ message: error.message })
+            }
+        })
+
 
 
         // update user information
@@ -214,6 +225,7 @@ async function run() {
         app.get("/classes", async (req, res) => {
             try {
                 const search = req.query.search || "";
+                const sort = req.query.sort || "";
                 const page = parseInt(req.query.page) || 1;
                 const limit = 6;
                 const skip = (page - 1) * limit;
@@ -248,10 +260,19 @@ async function run() {
                         }
                     },
                     { $skip: skip },
-                    { $limit: limit }
+                    { $limit: limit },
                 ];
                 // get paginated data
-                const classes = await classesCollection.aggregate(pipeline).toArray();
+                let classes = (await classesCollection.aggregate(pipeline).toArray());
+
+                // sorting
+                if (sort === "booked") {
+                    classes.sort((a, b) => (b.bookings?.length || 0) - (a.bookings?.length || 0));
+                } else if (sort === "notBooked") {
+                    classes.sort((a, b) => (a.bookings?.length || 0) - (b.bookings?.length || 0));
+                }
+
+
                 // get total count for pagination
                 const totalClasses = await classesCollection.countDocuments({
                     name: { $regex: search, $options: "i" }
@@ -298,7 +319,7 @@ async function run() {
                         }
                     },
                     { $sort: { totalBookings: -1 } },
-                    { $limit: 6 },
+                    { $limit: 8 },
                 ];
 
                 const classes = await classesCollection.aggregate(pipeLine).toArray();
@@ -672,7 +693,15 @@ async function run() {
             }
         })
 
-
+        // get all payments
+        app.get('/all-payments', userVerification, adminVerification, async (req, res) => {
+            try {   
+                const result = await paymentCollection.find().toArray();
+                res.send(result)
+            } catch (error) {
+                res.status(500).send({message: error.message})
+            }
+        })
 
         // creat review 
         app.post('/reviews', userVerification, async (req, res) => {
@@ -761,7 +790,7 @@ async function run() {
         // get posts
         app.get('/posts', async (req, res) => {
             try {
-                const page = parseInt(req.query.page);
+                const page = parseInt(req.query.page) | 1;
                 const limit = 6;
                 const result = await postsCollection.find().skip((page - 1) * limit).limit(limit).toArray();
                 const totalData = await postsCollection.countDocuments();
@@ -769,7 +798,8 @@ async function run() {
                 console.log(totalPage)
                 res.send({
                     result,
-                    totalPage
+                    totalPage,
+                    totalData
                 })
             } catch (error) {
                 res.status(500).send({ message: error.message })
@@ -818,7 +848,7 @@ async function run() {
         // get leatest six posts for home page
         app.get('/posts/latest', async (req, res) => {
             try {
-                const limit = 6;
+                const limit = 8;
                 const posts = await postsCollection
                     .find()
                     .sort({ createdAt: -1 })
